@@ -9,3 +9,7 @@ Read부는 현재 몇 개의 스레드에서 X를 Read하고 있는지를 기재
 
 자세한 원리 및 코드는 C++ IOCP 23강 참고하는 것을 권장한다.  
 
+구현 시 다음과 같은 정책이 보편적으로 사용된다.  
+Write lock을 가진 스레드가 다시 Write lock을 잡는 것 허용  
+Write lock을 가진 스레드가 Read lock을 잡는 것도 허용  
+단, Read lock을 잡은 스레드가 Write lock을 잡는 것은 방지!  
