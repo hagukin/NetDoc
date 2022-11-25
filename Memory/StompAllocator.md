@@ -69,6 +69,9 @@ delete test;
 (물론 underflow 문제가 발생할 여지는 여전히 남아있지만, 실제로 underflow가 발생하는 경우가 극히 드물다는 점을 생각하면 훨씬 더 나은 방식이다)  
 
 
-
+## 응용 - STL 에서의 활용
+이렇게 StompAllocator를 만든 이후에도 stl의 기본 자료구조들에서는 여전히 new를 사용해 메모리를 할당한다.  
+STL 자료구조들은 템플릿을 통해 custom allocator를 인자로 받을 수 있는데, 이 custom allocator를 만들어 넘겨주는 것으로 STL에서도 Stomp Allocator를 쓸 수 있다.  
+(IOCP 31 참조)  
 
 
