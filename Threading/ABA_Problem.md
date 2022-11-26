@@ -3,7 +3,8 @@
 Compare and Exchange(CAS)
 
 ## 개요
-[참고글](!https://blog.naver.com/jjoommnn/130040068875)
+[참고글](https://blog.naver.com/jjoommnn/130040068875)  
+
 위 내용을 아주 간단하게 설명하면, 타 스레드에서 pop 두번에 pop한 메모리를 push해서 stack이 최종적으로  
 A B C에서  
 A C가 되었다면,  
