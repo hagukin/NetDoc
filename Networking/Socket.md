@@ -40,5 +40,5 @@ IOCP 39 참고
 
 위와 반대로 UDP의 경우 패킷 간의 바운더리가 명확하다. 고로 위와 같은 상황에서 sendto() (UDP는 send대신 sendto를 사용)를 10번 호출해 100씩 10번 보냈을 경우,  
 서버측에서 recvfrom() (recv대신 사용)을 할 때 한 번에 1000이 읽히는 TCP와 달리 100씩 읽어온다.  
-(참고: UDP도 connected UDP, 즉 소켓에 발신에 항상 사용할 상대방 주소를 저장해놓는 UDP의 경우 connect()와 send()를 사용한다. 물론 TCP처럼 진짜 connection이 형성되는 건 아니고, 그냥 sendto 호출할때마다 인자로 주소를 넘겨주는 걸 편하게 해주는 용도 정도이다. sendto()를 사용하는 UDP는 unconnected UDP라고 한다. IOCP 40 참고)  
+(참고: UDP도 connected UDP, 즉 소켓에 발신에 항상 사용할 상대방 주소를 저장해놓는 UDP의 경우 connect()와 send()를 사용한다. 물론 TCP처럼 진짜 connection이 형성되는 건 아니고, 그냥 sendto 호출할때마다 인자로 주소를 넘겨주는 걸 편하게 해주는 용도 정도이다. sendto()를 사용하는 UDP는 unconnected UDP라고 한다. IOCP 41 참고)  
 
