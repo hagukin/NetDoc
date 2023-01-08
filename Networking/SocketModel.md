@@ -80,3 +80,15 @@ Callback 방식의 장점은 소켓별로 일일히 이벤트를 만들어줘야
 또 빈번한 alertable wait로 성능 저하가 우려됨.  
 * IOCP  
 클라이언트 다수를 대상으로 서버 모델로는 현재로썬 가장 이상적임.  
+
+## 참고자료
+### 참고하면 좋은 개념  
+Reactor Pattern  
+뒤늦게 무언가를 처리하는 구조.  
+소켓 상태 확인 후 뒤늦게 recv나 send를 호출하는 형태가 Reactor pattern에 해당.  
+Select, WSAEventSelect 모델이 해당.  
+  
+Proactor Pattern  
+미리 무언가를 처리하는 구조.  
+미리 recv, send를 호출한 후 그 완료 시점에 따라 처리하는 형태가 Proactor pattern에 해당.  
+Overlapped 이벤트, 콜백이 해당.  
