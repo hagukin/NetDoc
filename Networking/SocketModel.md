@@ -38,5 +38,28 @@ Async-Nonblocking 방식이다.
 위 사진에서 Signal이 Event 방식이라고 생각하면 된다  
 
 #### A. Event 방식
+![image](https://user-images.githubusercontent.com/63915665/211185659-55969b1a-649f-40fc-a05d-92342cc1a0c3.png)  
+핵심함수는 WSAWaitForMultipleEvents로, 비동기 IO 함수가 완료되면 Event를 Signaled로 바꿔주고, WSAWaitForMultipleEvents는 Signal되있나 살펴보는 역할을 한다. (주의: 한번에 살펴볼 수 있는 최대 이벤트(=소켓)갯수는 64개로 제한된다. 이 내용은 바로 위 WSAEventSelect 모델에서 다룬 적 있다)  
 
 #### B. Callback 방식
+![image](https://user-images.githubusercontent.com/63915665/211186187-b89301ee-3b35-43bc-8910-059a6aeb0325.png)  
+  
+비동기 IO 함수가 바로 처리되지 않았을 경우 해당 스레드를 Alertable wait 상태로 넘긴다.  
+![image](https://user-images.githubusercontent.com/63915665/211186005-446a8ec5-e3b9-45ab-9412-651d38dfc82e.png)  
+즉 WSARecv()가 바로 처리되지 않고 처리까지 대기시간이 걸릴 경우, SleepEx나 WSAWaitForMultipleEvents 함수 등을 이용해 해당 스레드 자체를 Alertable wait로 넘겨버리고(SleepEx의 활용이 훨씬 권장되는데, 이유는 WSAWaitForMultipleEvents를 사용하려면 소켓 하나당 이벤트 하나를 연결해주어야 하고, 이렇게 만들 수 있는 이벤트의 최대 갯수에 제한이 있기 때문이다), 커널에서 IO가 끝났을 때 이를 통보해주어(Alert) 다시 진행되게 만든다.  
+다시 진행되므로 이때 콜백이 실행되고, 콜백이 끝나면 스레드가 Alertable wait 상태에서 탈출한다.  
+![image](https://user-images.githubusercontent.com/63915665/211186259-0724fef2-6760-4a26-8d98-39ea78a86e32.png)  
+주의할 사항은 위 코드를 보면 콜백함수인 RecvCallback()을 직접 호출하는 코드는 어디에도 없음에도 불구하고, 위 코드에서 SleepEx가 끝나고(즉 alertable wait에서 탈출하고) 곧장 자기 알아서 RecvCallback을 호출한다.  
+(IOCP 47)  
+
+또 하나 주의사항은, 한번에 Recv,Send 등을 여러번 해주었다고 해서 APC 큐에 여러번 진입하는 것은 아니다.  
+
+Callback 방식의 장점은 소켓별로 일일히 이벤트를 만들어줘야 될 필요가 없어서 다량의 클라이언트에게 패킷을 보내기가 Event방식보다 용의하다는 것이다.  
+
+그런데 WinAPI를 보면 Callback 함수의 형태가 지정되어있음을 알 수 있는데, 그 인자들이 하나같이 별 유용하지 않은 정보들인 것을 살펴보면 알 수 있다.  
+즉 다시 말해, 우리는 콜백함수가 실행되어도 어떤 클라이언트에 의해 실행되었는지 현재로써는 알 방법이 없다는 것이다.  
+그러나 이를 교묘하게 해결하는 방법이 있는데, 함수의 세번째 파라미터인 overlapped가 우리의 Session 구조체 내에 들어간다는 점을 이용해, Session의 비트 가장 앞부분에 Overlapped가 들어가게 한 후 세번째 인자를 Session으로 Typecast해버리면, 우리는 Session내의 다른 정보들에도 액세스 할 수 있게 된다.  
+![image](https://user-images.githubusercontent.com/63915665/211186572-c525dc01-dda5-489e-b235-50ef70bf9ad9.png)  
+![image](https://user-images.githubusercontent.com/63915665/211186673-261e83b4-cbd0-4a06-98ff-d313ba85d9fa.png)  
+
+
