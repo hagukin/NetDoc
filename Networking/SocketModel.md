@@ -32,3 +32,11 @@ Select 모델과 거의 유사한 흐름으로 진행되며 예제 코드를 보
 (필요하면 더 만들면 된다. 그러나 이게 복잡해지기 때문에 IOCP를 사용하는 것.)  
 (IOCP 45 참고)
 
+### Overlapped 모델
+Async-Nonblocking 방식이다.  
+![image](https://user-images.githubusercontent.com/63915665/211182338-575661c3-c5f8-4bd7-a659-8f377c4e0f53.png)  
+위 사진에서 Signal이 Event 방식이라고 생각하면 된다  
+
+#### A. Event 방식
+
+#### B. Callback 방식
