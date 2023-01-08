@@ -64,4 +64,19 @@ Callback 방식의 장점은 소켓별로 일일히 이벤트를 만들어줘야
 ![image](https://user-images.githubusercontent.com/63915665/211186572-c525dc01-dda5-489e-b235-50ef70bf9ad9.png)  
 ![image](https://user-images.githubusercontent.com/63915665/211186673-261e83b4-cbd0-4a06-98ff-d313ba85d9fa.png)  
 
-
+## 각 모델들의 장단점
+* Select 모델  
+장점: 윈도우, 리눅스 공통 -> 연결할 대상이 어차피 서버 하나밖에 없는 클라이언트를 구축할 때는 멀티플랫폼 환경에 유리한 Select 모델이 적합할 수 있음.  
+단점: 성능 최하(매번 등록해줘야 함), 소켓 64개 제한  
+* WSAEventSelect 모델  
+장점: 비교적 뛰어난 성능  
+단점: 소켓 64개 제한  
+* Overlapped - 이벤트 기반  
+장점: 성능  
+단점: 소켓 64개 제한  
+* Overlapped - 콜백 기반  
+장점: 성능  
+단점: 모든 비동기 소켓 함수에서 사용가능하지는 않다, 예시로 accpet에서는 콜백 overlapped 구조 사용 불가.  
+또 빈번한 alertable wait로 성능 저하가 우려됨.  
+* IOCP  
+클라이언트 다수를 대상으로 서버 모델로는 현재로썬 가장 이상적임.  
