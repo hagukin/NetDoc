@@ -64,6 +64,73 @@ Callback 방식의 장점은 소켓별로 일일히 이벤트를 만들어줘야
 ![image](https://user-images.githubusercontent.com/63915665/211186572-c525dc01-dda5-489e-b235-50ef70bf9ad9.png)  
 ![image](https://user-images.githubusercontent.com/63915665/211186673-261e83b4-cbd0-4a06-98ff-d313ba85d9fa.png)  
 
+
+### Completion Port (IOCP) 모델
+선수지식: Overlapped 모델  
+Overlapped 모델을 요약하면 다음과 같다.  
+비동기 입출력 함수가 실행되는 동안 스레드는 Alertable wait 상태가 된다.  
+함수 실행이 완료되면 쓰레드 별로 있는 APC 큐에 해당 함수가 완료되면 실행될 콜백 함수의 정보와 함께 Alert를 해주라는 요청이 쌓인다.  
+이후 APC큐를 비우면서 콜백을 실행하고 그 후 스레드를 Alert해주어 Alertable wait 상태에서 빠져나가게 한다.  
+
+IOCP 모델은 Overlapped 모델과 거의 유사하지만 몇 가지 큰 차이점이 있다.  
+1) 스레드마다 APC 큐가 있던 Overlapped 구조와 다르게, 중앙에서 제어하는 Completion Port 큐 하나를 사용한다. (즉 더 멀티스레드 친화적이다)  
+2) 콜백이 올 때 까지 Alertable Wait 상태를 유지하던 기존 방식과 다르게 Completion Port 큐의 처리 결과를 GetQueuedCompletionStatus() 함수를 통해 처리한다. (즉 Alertable wait로 인한 부하가 줄어든다)   
+
+전체적인 흐름을 이해하는 데 초점을 두자.  
+보다 더 세부적인 IOCP 모델의 구현 방식은 다른 글에서 더 자세히 다뤄보겠다.  
+
+```c++
+// 주요 함수
+
+CreateIoCompletionPort(...)
+/*
+Completion Port를 생성해줄 때도 사용되고,
+어떤 특정 소켓을 Completion Port에 등록해 줄때도 사용한다.
+*/
+
+// 사용예시 (IOCP - Completion Port 모델 참고)
+// CP 생성
+// 여기서는 iocpHandle이라는 이름으로 Completion Port (혹은 CP에 접근 가능한 객체)를 생성중이다. 편의상 일단 iocpHandle = CP라고 이해하고 넘어가자.  
+HANDLE iocpHandle = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+// ...
+// 소켓을 CP에 등록
+// accept() 이후 clientSocket라는 소켓 정보를 가지고 있는 상황
+CreateIoCompletionPort((HANDLE)clientSocket, iocpHandle, (ULONG_PTR)session/*session의 메모리 주소값*/, 0);
+// 해당 소켓에 대해 최초 1회 Recv를 해주어야 한다
+// ...
+
+
+
+
+// Recv 함수 처리 이후의 추가적인 처리(즉 Recv 완료 시 실행될 부분들)는 다른 스레드를 생성해 거기서 처리한다. 
+// CP에 소켓을 등록했기 때문에 다른 스레드들도 해당 Recv 함수가 완료 되었는지를 통지받을 수 있기 때문에 가능한 방식이다.
+// 별도의 스레드에서 돌아가면서 Recv한 데이터를 처리해주는 WorkerThreadMain()함수를 살펴보자.  
+void WorkerThreadMain(HANDLE iocpHandle)
+{
+  while (true)
+  {
+    DWORD bytesTransferred = 0;
+    Session* session = nullptr;
+    OverlappedEx* overlappedEx = nullptr;
+    
+    // CP에서 일감이 완료되면 이 함수가 처리되어 진행된다.
+    ::GetQueuedCompletionStatus(iocpHandle, &bytesTransferred, (ULONG_PTR)&session, (LPOVERLAPPED*)&overlappedEx, INFINITE); 
+    // 앞에서 CreateIoCompletionPort에서 session의 주소값을 ULONG 으로 넘겼었는데, 이 주소값을 이용해 session을 이 스레드에서 복원시켜준다.  
+    
+    if (ret == FALSE || bytesTransferred == 0)
+    {
+      // 예기치 못한 상황
+      continue;
+    }
+    
+    cout << "recv()" << endl;
+  }
+}
+
+
+```
+
+
 ## 각 모델들의 장단점
 * Select 모델  
 장점: 윈도우, 리눅스 공통 -> 연결할 대상이 어차피 서버 하나밖에 없는 클라이언트를 구축할 때는 멀티플랫폼 환경에 유리한 Select 모델이 적합할 수 있음.  
