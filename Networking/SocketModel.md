@@ -101,7 +101,6 @@ CreateIoCompletionPort((HANDLE)clientSocket, iocpHandle, (ULONG_PTR)session/*ses
 
 
 
-
 // Recv 함수 처리 이후의 추가적인 처리(즉 Recv 완료 시 실행될 부분들)는 다른 스레드를 생성해 거기서 처리한다. 
 // CP에 소켓을 등록했기 때문에 다른 스레드들도 해당 Recv 함수가 완료 되었는지를 통지받을 수 있기 때문에 가능한 방식이다.
 // 별도의 스레드에서 돌아가면서 Recv한 데이터를 처리해주는 WorkerThreadMain()함수를 살펴보자.  
@@ -123,12 +122,19 @@ void WorkerThreadMain(HANDLE iocpHandle)
       continue;
     }
     
-    cout << "recv()" << endl;
+    cout << "recv(): bytes - " << bytesTransferred << endl;
+    
+    /*
+    여기서 사실 일감 하나에 대한 처리는 끝나는데,
+    그 다음번 Recv를 호출해주어야 두번째, 세번째 패킷에 대한 지속적인 recv가 가능하다.
+    */
+    // 세부적인 코드들은 생략
+    // ...
+    ::WSARecv(session->socket, &wsaBuf, &flags, &overlappedEx->overlapped, NULL);
   }
 }
-
-
 ```
+
 
 
 ## 각 모델들의 장단점
