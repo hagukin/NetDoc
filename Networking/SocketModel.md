@@ -81,6 +81,9 @@ IOCP 모델은 Overlapped 모델과 거의 유사하지만 몇 가지 큰 차이
 
 ```c++
 // 주요 함수
+// 1. CreateIoCompletionPort
+// 2. GetQueuedCompletionStatus
+
 
 CreateIoCompletionPort(...)
 /*
@@ -133,8 +136,16 @@ void WorkerThreadMain(HANDLE iocpHandle)
     ::WSARecv(session->socket, &wsaBuf, &flags, &overlappedEx->overlapped, NULL);
   }
 }
-```
+```  
 
+참고:  
+위에서 다룬 IOCP 모델은 기본적인 흐름을 이해하기 위한 용도로, 해당 구조에는 여러 결함들이 있다.  
+대표적인 게 session을 현재 주소값으로 던져주고 있다는 것인데, 만약 session이 유저 disconnection 등으로 해제되게 되면 크래시가 발생할 수 있다는 문제이다.  
+(더 심각한 경우 크래시도 안나고 쓰레기값이 전달되어 코드가 엉망이 될 수도 있다)  
+이 문제를 해결하려면, 어떤 세션에 대해 WSARecv()같은 입출력 함수를 호출하는 순간, reference count 등을 사용해 입출력 함수가 끝나기 전까지 절대 그 session을 메모리에서 해제되지 않도록 만들어주는 것 등이 있겠다.  
+
+이전에 다루었던 xnew와 같은 커스텀 메모리 할당자 등이 이런 상황들에서 쓰일 수 있다.  
+자세한 건 나중에 IOCP서버 구현과 함께 공부해보자.  
 
 
 ## 각 모델들의 장단점
