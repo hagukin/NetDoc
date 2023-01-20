@@ -59,3 +59,6 @@ winsock에서는 ioctlsocket()함수를 이용해 논블로킹 소켓으로 전�
 
 ### 소켓 모델  
 별도 문서로 이동
+
+
+참고: 소켓 함수의 라이브러리화에 대해서는 iocp Socket utils 참고  
