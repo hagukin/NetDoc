@@ -96,10 +96,16 @@ void WorkerThreadMain(HANDLE iocpHandle)
 ## 라이브러리화 (객체지향적으로 구조화)
 내용의 특성상 내용들이 파편화된 형태로 기록될 수 있기에 흐름을 쭉 따라가기보다는 필요한 부분을 찾아서 사용하는 걸 권장한다
 
-IOCP의 핵심 로직들 (completion port 만들고, 여기에 소켓을 등록하고, 소켓들에서 recv하고 등등)을 관리해주는 IocpCore라는 객체를 구현하는 과정에서 Register()에 대해 잠깐 살펴보자.  
+### IocpCore
+IOCP의 핵심 로직들 (completion port 만들고, 여기에 소켓을 등록하고, 소켓들에서 recv하고 등등)을 관리해주는 IocpCore라는 객체를 구현한다.
 
-Register의 목적은 소켓을 iocp에 등록하는 것이라고 할 때, 우리는 이미 위에서 소켓을 등록하는 법을 배운 적이 있기에 내용의 구현은 크게 어렵지 않다.
+#### Register()
+IocpCore에는 여러 기능들이 있지만 그중 Register()에 대해 잠깐 살펴보자.  
 
+Register()의 목적은 소켓을 CP에 등록하는 것인데, 우리는 이미 위에서 CreateIoCompletionPort() 함수를 이용해 소켓을 CP에 등록하는 법을 배운 적이 있다. 다만 이것보다 조금 더 복잡해지는데, 예전에 우리가 CreateIoCompletionPort에 임시로 제작했던 Session 객체를 넘겨준 것과 다르게 이제 제대로 IocpObject라는 객체를 구현해 넘겨줄 것이다.  
 
+IocpObject는 Dispatch(IocpEvent* iocpEvent, int32 numOfBytes)라는 함수를 가지며 이 함수는 worker thread들에게 일감을 분배하는 역할이다. 
+
+Dispatch가 인자로 받는 IocpEvent는 예전에 Session에서 Enum으로 eventType(Connect, Accept, Recv, Send) 을 저장한 것과 동일하지만 이걸 객체로 한 번 더 감싸줬다고 생각하면 된다.  
 
 
