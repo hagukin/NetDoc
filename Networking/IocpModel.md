@@ -99,15 +99,23 @@ void WorkerThreadMain(HANDLE iocpHandle)
 ### IocpCore
 IOCP의 핵심 로직들 (completion port 만들고, 여기에 소켓을 등록하고, 소켓들에서 recv하고 등등)을 관리해주는 IocpCore라는 객체를 구현한다.
 
+iocp - IocpCore 참조
+
 #### Register()
 IocpCore에는 여러 기능들이 있지만 그중 Register()에 대해 잠깐 살펴보자.  
 
 Register()의 목적은 소켓을 CP에 등록하는 것인데, 우리는 이미 위에서 CreateIoCompletionPort() 함수를 이용해 소켓을 CP에 등록하는 법을 배운 적이 있다. 다만 이것보다 조금 더 복잡해지는데, 예전에 우리가 CreateIoCompletionPort에 임시로 제작했던 Session 객체를 넘겨준 것과 다르게 이제 제대로 IocpObject라는 객체를 구현해 넘겨줄 것이다.  
 IocpObject는 (현재 이해한 바에 의하면) Completion Port에 저장할 데이터 객체이다.  
 
-IocpObject는 Dispatch(IocpEvent* iocpEvent, int32 numOfBytes)라는 함수를 가지며 이 함수는 worker thread들에게 일감을 분배하는 역할이다. 
+IocpObject::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) 함수는 worker thread들에게 일감을 분배하는 역할이다. 즉 실질적으로 스레드에게 일감을 전달하는 과정이 여기서 처리된다.
+```c++
+// TODO
+```
+이 함수는 IocpCore::Dispatch(uint32 timeoutMs)로부터 호출된다.
 
 Dispatch가 인자로 받는 IocpEvent는 예전에 Session에서 Enum으로 eventType(Connect, Accept, Recv, Send) 을 저장한 것과 동일하지만 이걸 객체로 한 번 더 감싸줬다고 생각하면 된다.  
+IocpEvent가 OVERLAPPED를 상속받았다는 것이 중요한데, OVERLAPPED를 상속받았기에 메모리 앞부분은 OVERLAPPED가 되고 자연스럽게 typecast없이 상위 클래스인 OVERLAPPED로 typecast가 가능해진다.  
+(주의: 상위 클래스로 형변환이 가능해지는 대신 virtual 함수의 사용이 불가능해진다. vtable이 메모리 맨 앞을 차지해버리기 때문에 typecast하면 꼬여버린다.)
 
 최종적으로 Register는 다음과 같은 형태가 된다.
 ```c++
@@ -121,4 +129,37 @@ bool IocpCore::Register(IocpObject* iocpObject)
   );
 }
 ```
+
+### Dispatch()
+위쪽의 라이브러리화 이전의 약식 코드를 먼저 보고오면 이해가 더 빠르다.
+
+```c++
+bool IocpCore::Dispatch(uint32 timeoutMs)
+{
+  DWORD numOfBytes = 0;
+  IocpObject* iocpObject = nullptr;
+  IocpEvent* iocpEvent = nullptr;
+  
+  
+  if (::GetQueuedCompletionStatus(
+    _iocpHandle, 
+    OUT &numOfBytes, 
+    OUT reinterpret_case<PLONG_PTR>(&iocpObject), 
+    OUT reinterpret_case<LPOVERLAPPED*>(&iocpEvent), // Register 항목에서 언급했듯이 iocpEvent는 상위 클래스인 OVERLAPPED로 typecast가 가능하다
+    timeoutMs) == true)
+  {
+    // 여기 진입했다는 건 CP가 뭔가 소켓io작업이 끝났음을 감지했다는 의미
+    // 고로 worker thread에게 이후 작업을 맡겨야 한다
+    iocpObject->Dispatch(iocpEvent, numOfBytes); // 실질적으로 타입에 맡게 스레드에게 작업을 맡기는 과정이 여기서 처리된다
+    // 즉 iocpCore의 Dispatch()가 iocpObject의 Dispatch()를 호출
+  }
+  else
+  {
+    // 편의상 에러 처리 및 timeout 처리 생략
+  }
+  
+  return false;
+}
+```
+
 
