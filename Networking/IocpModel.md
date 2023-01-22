@@ -1,5 +1,4 @@
 # IOCP 입출력 모델
-## 개요
 선수지식: Overlapped 모델  
 Overlapped 모델을 요약하면 다음과 같다.  
 비동기 입출력 함수가 실행되는 동안 스레드는 Alertable wait 상태가 된다.  
@@ -93,15 +92,18 @@ void WorkerThreadMain(HANDLE iocpHandle)
 
 이전에 다루었던 xnew와 같은 커스텀 메모리 할당자 등이 이런 상황들에서 쓰일 수 있다.  
 
-## 라이브러리화 (객체지향적으로 구조화)
+
+
+
+# 라이브러리화 (객체지향적으로 구조화)
 내용의 특성상 내용들이 파편화된 형태로 기록될 수 있기에 흐름을 쭉 따라가기보다는 필요한 부분을 찾아서 사용하는 걸 권장한다
 
-### IocpCore
+## IocpCore
 IOCP의 핵심 로직들 (completion port 만들고, 여기에 소켓을 등록하고, 소켓들에서 recv하고 등등)을 관리해주는 IocpCore라는 객체를 구현한다.
 
 iocp - IocpCore 참조
 
-#### Register()
+### IocpCore::Register()
 IocpCore에는 여러 기능들이 있지만 그중 Register()에 대해 잠깐 살펴보자.  
 
 Register()의 목적은 소켓을 CP에 등록하는 것인데, 우리는 이미 위에서 CreateIoCompletionPort() 함수를 이용해 소켓을 CP에 등록하는 법을 배운 적이 있다. 다만 이것보다 조금 더 복잡해지는데, 예전에 우리가 CreateIoCompletionPort에 임시로 제작했던 Session 객체를 넘겨준 것과 다르게 이제 제대로 IocpObject라는 객체를 구현해 넘겨줄 것이다.  
@@ -130,7 +132,7 @@ bool IocpCore::Register(IocpObject* iocpObject)
 }
 ```
 
-### Dispatch()
+### IocpCore::Dispatch()
 위쪽의 라이브러리화 이전의 약식 코드를 먼저 보고오면 이해가 더 빠르다.
 
 ```c++
