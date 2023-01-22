@@ -95,13 +95,24 @@ Completion Port를 생성해줄 때도 사용되고,
 // CP 생성
 // 여기서는 iocpHandle이라는 이름으로 Completion Port (혹은 CP에 접근 가능한 객체)를 생성중이다. 편의상 일단 iocpHandle = CP라고 이해하고 넘어가자.  
 HANDLE iocpHandle = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+
+// WorkerThread들 생성
+// 얘들이 Recv 된 데이터들을 처리해준다
+// 임의로 일단 5개의 스레드를 가동한다
+for (int32 i=0;i<5;++i)
+  GThreadManager->Launch([=]() {WorkerThreadMain(iocpHandle); }); // 스레드를 관리해주는 커스텀 스레드매니저 (구현내용은 생략한다 iocp 참고, 그냥 여기서는 스레드를 만들어주는구나 정도로만 넘어가자)
+
 // ...
 // 소켓을 CP에 등록
 // accept() 이후 clientSocket라는 소켓 정보를 가지고 있는 상황
 CreateIoCompletionPort((HANDLE)clientSocket, iocpHandle, (ULONG_PTR)session/*session의 메모리 주소값*/, 0);
 // 해당 소켓에 대해 최초 1회 Recv를 해주어야 한다
 // ...
+::WSARecv(clientSocket, &wsaBuf, 1, &recvLen, &flags, &overlappedEx->overlapped, NULL);
 
+// ...
+GThreadManager->Join();
+// ...이후 코드 생략
 
 
 // Recv 함수 처리 이후의 추가적인 처리(즉 Recv 완료 시 실행될 부분들)는 다른 스레드를 생성해 거기서 처리한다. 
@@ -116,7 +127,7 @@ void WorkerThreadMain(HANDLE iocpHandle)
     OverlappedEx* overlappedEx = nullptr;
     
     // CP에서 일감이 완료되면 이 함수가 처리되어 진행된다.
-    ::GetQueuedCompletionStatus(iocpHandle, &bytesTransferred, (ULONG_PTR)&session, (LPOVERLAPPED*)&overlappedEx, INFINITE); 
+    BOOL ret = ::GetQueuedCompletionStatus(iocpHandle, &bytesTransferred, (ULONG_PTR)&session, (LPOVERLAPPED*)&overlappedEx, INFINITE); 
     // 앞에서 CreateIoCompletionPort에서 session의 주소값을 ULONG 으로 넘겼었는데, 이 주소값을 이용해 session을 이 스레드에서 복원시켜준다.  
     
     if (ret == FALSE || bytesTransferred == 0)
@@ -126,14 +137,12 @@ void WorkerThreadMain(HANDLE iocpHandle)
     }
     
     cout << "recv(): bytes - " << bytesTransferred << endl;
-    
     /*
     여기서 사실 일감 하나에 대한 처리는 끝나는데,
     그 다음번 Recv를 호출해주어야 두번째, 세번째 패킷에 대한 지속적인 recv가 가능하다.
     */
-    // 세부적인 코드들은 생략
-    // ...
-    ::WSARecv(session->socket, &wsaBuf, &flags, &overlappedEx->overlapped, NULL);
+    // ... (메인 스레드에서 처음 Recv를 호출한 것과 동일)
+    ::WSARecv(session->socket, &wsaBuf, &flags, &overlappedEx->overlapped, NULL); // 재호출
   }
 }
 ```  
