@@ -103,9 +103,22 @@ IOCP의 핵심 로직들 (completion port 만들고, 여기에 소켓을 등록�
 IocpCore에는 여러 기능들이 있지만 그중 Register()에 대해 잠깐 살펴보자.  
 
 Register()의 목적은 소켓을 CP에 등록하는 것인데, 우리는 이미 위에서 CreateIoCompletionPort() 함수를 이용해 소켓을 CP에 등록하는 법을 배운 적이 있다. 다만 이것보다 조금 더 복잡해지는데, 예전에 우리가 CreateIoCompletionPort에 임시로 제작했던 Session 객체를 넘겨준 것과 다르게 이제 제대로 IocpObject라는 객체를 구현해 넘겨줄 것이다.  
+IocpObject는 (현재 이해한 바에 의하면) Completion Port에 저장할 데이터 객체이다.  
 
 IocpObject는 Dispatch(IocpEvent* iocpEvent, int32 numOfBytes)라는 함수를 가지며 이 함수는 worker thread들에게 일감을 분배하는 역할이다. 
 
 Dispatch가 인자로 받는 IocpEvent는 예전에 Session에서 Enum으로 eventType(Connect, Accept, Recv, Send) 을 저장한 것과 동일하지만 이걸 객체로 한 번 더 감싸줬다고 생각하면 된다.  
 
+최종적으로 Register는 다음과 같은 형태가 된다.
+```c++
+bool IocpCore::Register(IocpObject* iocpObject)
+{
+  return ::CreateIoCompletionPort(
+    iocpObject->GetHandle(), // 소켓의 핸들을 반환
+    _iocpHandle,
+    reinterpret_cast<ULONG_PTR>(iocpObject),
+    0
+  );
+}
+```
 
