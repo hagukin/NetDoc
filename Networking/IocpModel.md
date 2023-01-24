@@ -98,16 +98,16 @@ void WorkerThreadMain(HANDLE iocpHandle)
 # 라이브러리화 (객체지향적으로 구조화)
 내용의 특성상 내용들이 파편화된 형태로 기록될 수 있기에 흐름을 쭉 따라가기보다는 필요한 부분을 찾아서 사용하는 걸 권장한다
 
+---  
+
 ## IocpCore
 IOCP의 핵심 로직들 (completion port 만들고, 여기에 소켓을 등록하고, 소켓들에서 recv하고 등등)을 관리해주는 IocpCore라는 객체를 구현한다.
 
 iocp - IocpCore 참조
 
-### IocpCore::Register()
-IocpCore에는 여러 기능들이 있지만 그중 Register()에 대해 잠깐 살펴보자.  
-
-Register()의 목적은 소켓을 CP에 등록하는 것인데, 우리는 이미 위에서 CreateIoCompletionPort() 함수를 이용해 소켓을 CP에 등록하는 법을 배운 적이 있다. 다만 이것보다 조금 더 복잡해지는데, 예전에 우리가 CreateIoCompletionPort에 임시로 제작했던 Session 객체를 넘겨준 것과 다르게 이제 제대로 IocpObject라는 객체를 구현해 넘겨줄 것이다.  
-IocpObject는 (현재 이해한 바에 의하면) Completion Port에 저장할 데이터 객체이다.  
+### class IocpObject
+IocpObject는 Completion Port에 저장할 데이터 객체이다.  
+IocpObject = 소켓이라고 생각하면 이해가 빠르며, 클라이언트 소켓, accept해준느 문지기 소켓, 서버 소켓등 소켓들은 거의 다 IocpObject를 상속받아 만든다고 생각하면 된다.  
 
 IocpObject::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) 함수는 worker thread들에게 일감을 분배하는 역할이다. 즉 실질적으로 스레드에게 일감을 전달하는 과정이 여기서 처리된다.
 ```c++
@@ -118,6 +118,11 @@ IocpObject::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) 함수는 worker th
 Dispatch가 인자로 받는 IocpEvent는 예전에 Session에서 Enum으로 eventType(Connect, Accept, Recv, Send) 을 저장한 것과 동일하지만 이걸 객체로 한 번 더 감싸줬다고 생각하면 된다.  
 IocpEvent가 OVERLAPPED를 상속받았다는 것이 중요한데, OVERLAPPED를 상속받았기에 메모리 앞부분은 OVERLAPPED가 되고 자연스럽게 typecast없이 상위 클래스인 OVERLAPPED로 typecast가 가능해진다.  
 (주의: 상위 클래스로 형변환이 가능해지는 대신 virtual 함수의 사용이 불가능해진다. vtable이 메모리 맨 앞을 차지해버리기 때문에 typecast하면 꼬여버린다.)
+
+### IocpCore::Register()
+IocpCore에는 여러 기능들이 있지만 그중 Register()에 대해 잠깐 살펴보자.  
+
+Register()의 목적은 소켓을 CP에 등록하는 것인데, 우리는 이미 위에서 CreateIoCompletionPort() 함수를 이용해 소켓을 CP에 등록하는 법을 배운 적이 있다. 다만 이것보다 조금 더 복잡해지는데, 예전에 우리가 CreateIoCompletionPort에 임시로 제작했던 Session 객체를 넘겨준 것과 다르게 이제 제대로 IocpObject 객체를 넘겨줄 것이다.  
 
 최종적으로 Register는 다음과 같은 형태가 된다.
 ```c++
@@ -163,5 +168,34 @@ bool IocpCore::Dispatch(uint32 timeoutMs)
   return false;
 }
 ```
+
+---  
+
+## Listener
+accept를 해주는 소켓을 나타낸다. (식당 문지기)  
+CP에 등록해야 되는 소켓이므로 IocpObject를 상속받아 구현한다.  
+또 IocpEvent 구현 당시 같이 구현해두었던 AcceptEvent의 사용도 필요하다.  
+(소켓을 accept해줘야 하므로)  
+IocpObject의 인터페이스 함수들의 구현은 거의 동일하므로 넘어가고, 핵심 함수만 간략히 살펴보자.  
+
+### Listener::RegisterAccept(AcceptEvent* acceptEvent)
+### Listener::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) 
+### Listener::ProcessAccept(AcceptEvent* acceptEvent)
+
+세 함수를 하나의 흐름으로 살펴보자.  
+
+클라를 나타내는 Session 객체를 여기서 생성해준다.  
+클라에 대한 정보는 AcceptEvent를 통해 받고, Session 생성 후 다시 AcceptEvent 내부에 저장해준다.  
+그 후 SocketUtils::AcceptEx( ... )를 통해 winapi 함수 wrapper를 호출해 winsock의 비동기 accept를 해준다.  
+
+이후 accept가 되면 (비동기적으로 되면) 이걸 iocp가 감지해 IocpCore에서 Dispatch 호출, 여기서 다시 IocpObject(여기서는 Listener)::Dispatch()호출, 그 후 dispatch 함수 안에서 accept된 이후의 일감이 있다는 알림을 받는다. 그후 실제로 accept한 소켓에 대한 일처리를 해주기 위해서 dispatch함수 내에서 Listener::ProcessAccept(AcceptEvent* acceptEvent) 함수를 마지막으로 호출한다.  
+아까 위에서 말했듯이 AcceptEvent* acceptEvent내에는 Session 정보, 즉 클라이언트에 대한 정보가 저장되어 있으므로 우리는 여기서 클라와 관련된 모든 정보처리를 해줄 수 있다.  
+
+---  
+
+## Session
+특정 클라이언트 하나와 관련된 모든 정보들을 담고 있는 객체이다.  
+당연히 CP에 등록해야 하므로 IocpObject를 상속받아 구현한다.  
+
 
 
