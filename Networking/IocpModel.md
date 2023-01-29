@@ -240,8 +240,8 @@ worker 스레드들 생성 -> 각 스레드별로 IocpCore::Dispatch() -> CP에�
 
 즉 스레드들이 서로 돌아가며 RegisterAccept()를 실행하며, 최소 하나의 스레드는 언제나 RegisterAccept()를 실행하는 상태가 유지되어야 한다.  
 
+---  
 
-## IOCP 모델 보강 및 세션(send,recv,pooling)  
 현재의 구조상에서 한 가지 보완할 점이 있다면 CP에 저장되어있는 IocpObject(Session,Listener 등의 모체)가 클라이언트 튕김 등의 예기치 못한 이유로 worker 스레드에서 일을 처리하던 도중에 삭제될 경우 크래시가 발생한다는 것이다.  
 (주의: 클라이언트가 튕긴다고 바로 IocpObject가 날라간다기 보다는, 내부적인 로직(클라가 답신이 없으면 disconnect시키고 Session delete한다던가)에 의해 IocpObject가 삭제되거나 메모리 일부가 오염되는 경우에 더 가깝다)  
 
@@ -304,6 +304,12 @@ bool IocpCore::Dispatch(uint32 timeoutMs)
   return false;
 }
 ```  
+
+여기까지 수정 후 실행하면 동일하게 잘 작동하는 것을 확인할 수 있다.  
+
+---  
+
+## 2. Sevice 구현 (하나의 세션에 대해 해당 세션과 타 세션 간의 통신을 관리해주는 객체. 서버-클라, 클라-클라, 서버-서버)  
 
 
 
