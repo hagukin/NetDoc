@@ -97,16 +97,16 @@ void WorkerThreadMain(HANDLE iocpHandle)
 
 
 # 라이브러리화 (객체지향적으로 구조화)
-내용의 특성상 내용들이 파편화된 형태로 기록될 수 있기에 흐름을 쭉 따라가기보다는 필요한 부분을 찾아서 사용하는 걸 권장한다
+내용의 특성상 내용들이 난잡할 수 있기에 흐름을 쭉 따라가기보다는 필요한 부분을 찾아서 사용하는 걸 권장한다  
+구현은 1. Listen(accept 처리), 2. Session(recv, send 처리) 순으로 진행된다  
 
 ---  
 
-## IocpCore
+## 1. 기본 뼈대 및 Listener(accpet()) 구현
+### IocpCore
 IOCP의 핵심 로직들 (completion port 만들고, 여기에 소켓을 등록하고, 소켓들에서 recv하고 등등)을 관리해주는 IocpCore라는 객체를 구현한다.
 
-iocp - IocpCore 참조
-
-### class IocpObject
+### IocpObject
 IocpObject는 Completion Port에 저장할 데이터 객체이다.  
 IocpObject = 소켓이라고 생각하면 이해가 빠르며, 클라이언트 소켓, accept해준느 문지기 소켓, 서버 소켓등 소켓들은 거의 다 IocpObject를 상속받아 만든다고 생각하면 된다.  
 
@@ -185,6 +185,7 @@ bool IocpCore::Dispatch(uint32 timeoutMs)
 ## Session
 특정 클라이언트 하나와 관련된 모든 정보들을 담고 있는 객체이다.  
 당연히 CP에 등록해야 하므로 IocpObject를 상속받아 구현한다.  
+자세한 것은 아래에서 recv, send 구현 시 다시 다룬다.  
 
 ---  
 
@@ -208,8 +209,6 @@ IocpObject의 인터페이스 함수들의 구현은 거의 동일하므로 넘�
 이후 accept가 되면 (비동기적으로 되면) 이걸 iocp가 감지해 IocpCore에서 Dispatch 호출, 여기서 다시 IocpObject(여기서는 Listener)::Dispatch()호출, 그 후 dispatch 함수 안에서 accept된 이후의 일감이 있다는 알림을 받는다. 그후 실제로 accept한 소켓에 대한 일처리를 해주기 위해서 dispatch함수 내에서 Listener::ProcessAccept(AcceptEvent* acceptEvent) 함수를 마지막으로 호출한다.  
 아까 위에서 말했듯이 AcceptEvent* acceptEvent내에는 Session 정보, 즉 클라이언트에 대한 정보가 저장되어 있으므로 우리는 여기서 클라와 관련된 모든 정보처리를 해줄 수 있다.  
 
-주의해야 할 점은 ProcessAccept()는 함수 종료시 RegisterAccept()를 다시 호출해 지금까지의 일련의 사이클이 다시 재귀적으로 진행되도록 해줘야 한다는 것이다. (그래야 accept 올때마다 계속 받을 수 있기 때문이다. 그리고 재귀적으로 호출한다고 무한히 재귀를 타는 건 아니고, RegisterAccept의 AccpetEx()에서 accept할 소켓이 생겨야 계속 진행하는 듯 하다. 이부분은 확실치 않다.)  
-
 Dispatch  
 ![image](https://user-images.githubusercontent.com/63915665/215312019-176ba0ae-0236-4536-bec1-42473da1816f.png)  
 
@@ -223,10 +222,24 @@ RegisterAccept
 ![image](https://user-images.githubusercontent.com/63915665/214219115-30d9f17f-48a1-485a-9c9f-244878695d7c.png)  
 
 여기서 StartAccept는 최초 1회, Listener를 등록해주며 동시에 첫 RegisterAccept()를 호출해주는 과정이다.  
+이부분에서 for loop의 사용은 추후 구조 개선 시 변경될 부분이니 일단 넘어가자.  
 ![image](https://user-images.githubusercontent.com/63915665/215310943-4e82d94e-9229-4a8c-8b25-0f7b11e951a0.png)  
-지금은 임시로 for loop으로 RegisterAccept 호출을 해주고 있다. (숫자를 1 이상으로 지정하면 보다 더 많은 클라이언트들의 accept 시도를 더 빠르게 수락할 수 있다, 이는 RegisterAccept가 내부에서 AcceptEx를 사용하기 때문에 accept가 이뤄지기 전까지 대기하기 때문이다. 쉽게 비유하면 문지기가 많이 대기하고 있을 수록 한번에 많은 손님들이 몰려와도 빠르게 자리를 안내해줄 수 있는 것과 마찬가지이다.)  
 
-지금까지의 코드 흐름을 쭉 정리해보자.  
+지금까지 구현한 Listener과 accept()를 라이브러리화 된 IOCP로 처리하는 과정의 흐름을 쭉 정리해보자.  
+  
+그 전에 RegisterAccept()는 블로킹 함수이고, accept에 성공할 때까지 대기함을 명심하자. 성공 후에는 그냥 바로 종료되는데, 예기치 못한 에러(WSA_IO_PENDING이 아닌 나머지 모든 에러)가 발생했을 경우에만 재귀한다. 이는 원래대로라면 accept 성공한 걸 감지한 다른 worker 스레드에서 RegisterAccept()를 실행해 항상 Accept 가능한 상태를 유지해야 하는데, 에러가 나면 성공을 감지를 못해 상태가 끊기기 때문이다.  
+
+1. Listener 등록    
+Listener 생성 -> StartAccept() -> Listener CP에 등록, StartAccept()에서 RegisterAccept() 호출 -> RegisterAccept()에서 클라이언트 accept 할때까지 블락 -> 성공 시 CP에 알림 보내면서 종료  
+  
+2. 클라이언트들 accept  
+worker 스레드들 생성 -> 각 스레드별로 IocpCore::Dispatch() -> CP에서 accept 성공 알림받고 IocpObject::Dispatch() 실행 (정확히는 virtual이므로 Listener::Dispatch()) -> Listener::Dispatch() 실행되는 시점에서 Listener과 관련된 IO 이벤트(accept) 처리가 완료되었음을 의미 (즉 타 스레드의 Listener에서 신규 클라이언트에 대한 AcceptEx가 성공했음, 우리의 상황에서 메인 스레드의 RegisterAccept()가 첫번째 클라를 accept 성공한 경우이다) -> worker 스레드에서 Listener::ProcessAccept()를 호출해 Client Connected! 띄우고 RegisterAccept() 실행 -> 마찬가지로 두번째 클라 accept 성공할 때까지 블락 -> 성공 시 CP에 알림 보내면서 종료 -> 종료 후 메인스레드의 while loop에 의해 다시 IocpCore::Dispatch()가 실행되며 다음번 IO 신호를 기다리며 대기  
+
+3. 반복  
+다른 스레드들에서도 IocpCore::Dispatch() 돌고 있음 -> CP에서 accept 성공 알림받고 ... (이후 동일)  
+
+즉 스레드들이 서로 돌아가며 RegisterAccept()를 실행하며, 최소 하나의 스레드는 언제나 RegisterAccept()를 실행하는 상태가 유지되어야 한다.  
+
 
 
 현재까지 다룬 내용들에서 한 가지 보완할 점이 있다면 CP에 저장되어있는 IocpObject가 클라이언트 튕김 등의 예기치 못한 이유로 worker 스레드에서 일을 처리하던 도중에 삭제되지 않도록 하는 것인데, 이건 나중에 다뤄보자.  
