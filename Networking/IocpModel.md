@@ -241,8 +241,71 @@ worker 스레드들 생성 -> 각 스레드별로 IocpCore::Dispatch() -> CP에�
 즉 스레드들이 서로 돌아가며 RegisterAccept()를 실행하며, 최소 하나의 스레드는 언제나 RegisterAccept()를 실행하는 상태가 유지되어야 한다.  
 
 
+## IOCP 모델 보강 및 세션(send,recv,pooling)  
+현재의 구조상에서 한 가지 보완할 점이 있다면 CP에 저장되어있는 IocpObject(Session,Listener 등의 모체)가 클라이언트 튕김 등의 예기치 못한 이유로 worker 스레드에서 일을 처리하던 도중에 삭제될 경우 크래시가 발생한다는 것이다.  
+(주의: 클라이언트가 튕긴다고 바로 IocpObject가 날라간다기 보다는, 내부적인 로직(클라가 답신이 없으면 disconnect시키고 Session delete한다던가)에 의해 IocpObject가 삭제되거나 메모리 일부가 오염되는 경우에 더 가깝다)  
 
-현재까지 다룬 내용들에서 한 가지 보완할 점이 있다면 CP에 저장되어있는 IocpObject가 클라이언트 튕김 등의 예기치 못한 이유로 worker 스레드에서 일을 처리하던 도중에 삭제되지 않도록 하는 것인데, 이건 나중에 다뤄보자.  
+이를 어떻게 해결할까?  
+방법은 다양하다.  
+우선 레퍼런스 카운팅을 이용해 IocpObject의 Reference count를 추적하고 ref cnt가 0이 아닌 이상 절대 삭제하지 않는 방법이 있다. 이걸 직접 구현하기보다는 shared_ptr을 활용하는 게 유리하다.  
+
+우선 그동안 만든 모든 IocpObject들에 대한 shared_ptr 형을 미리 선언해준다. (편의를 위함)  
+![image](https://user-images.githubusercontent.com/63915665/215318220-1809ab71-676b-4e55-8ff6-1a2a54b0f45d.png)  
+그 후 IocpObject를 shared_ptr로 바로 사용할 수 있도록 해준다.  
+이걸 안해주면 가령 IocpObject 내부에서 스스로를 shared_ptr로 사용해야 할 경우 곤란해진다. 
+```c++
+// 잘못된 방법들
+class A
+{
+	// ...
+	shared_ptr<A> a;
+	
+	a = this; // 에러, this는 shared_ptr<A>가 아니라 A*임
+	a = shared_ptr<A>(a); // 에러는 안나지만 심각한 결과를 초래함. shared_ptr가 두개 만들어짐, 고로 ref count를 따로 세게 되어 한쪽이 지워졌지만 다른쪽은 남아있는 상황 등이 발생할 수 있음
+}
+
+// 올바른 방법
+class A : public enable_shared_from_this<A>
+{
+	// ...
+	shared_ptr<A> a;
+	
+	a = shared_from_this(); // 내부적으로는 weak_ptr를 사용
+}
+```  
+![image](https://user-images.githubusercontent.com/63915665/215317812-bd6a6680-4a8f-47e8-b953-21f03faa6d3e.png)  
+
+그 후 기존 코드들의 모든 IocpObject 관련 부분들의 type을 shared_ptr을 사용하도록 리팩토링해준다. 또 기존에 IocpObject와 IocpEvent를 둘다 넘기는 방식에서, IocpEvent 내에 IocpObjectRef를 저장한 후 IocpEvent만 넘기는 방식으로 변경한다.  
+![image](https://user-images.githubusercontent.com/63915665/215317945-02f42077-7cc3-4749-be90-95d4dee9f032.png)  
+```c++
+bool IocpCore::Dispatch(uint32 timeoutMs)
+{
+  DWORD numOfBytes = 0;
+	ULONG_PTR key = 0; // -> 추가, 0이라는 값을 줌으로서 사실상 쓰이지 않게 되었다
+  // IocpObject* iocpObject = nullptr; -> 삭제
+  IocpEvent* iocpEvent = nullptr;
+  
+  
+  if (::GetQueuedCompletionStatus(
+    _iocpHandle, 
+    OUT &numOfBytes, 
+    OUT &key, // OUT reinterpret_case<PLONG_PTR>(&iocpObject), -> 삭제
+    OUT reinterpret_case<LPOVERLAPPED*>(&iocpEvent),
+    timeoutMs) == true)
+  {
+		IocpObjectRef iocpObject = iocpEvent->owner; // -> 추가
+    iocpObject->Dispatch(iocpEvent, numOfBytes);
+  }
+  else
+  {
+    // 편의상 에러 처리 및 timeout 처리 생략
+  }
+  
+  return false;
+}
+```  
+
+
 
 
 
