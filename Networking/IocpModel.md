@@ -112,7 +112,15 @@ IocpObject = 소켓이라고 생각하면 이해가 빠르며, 클라이언트 �
 
 IocpObject::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes) 함수는 worker thread들에게 일감을 분배하는 역할이다. 즉 실질적으로 스레드에게 일감을 전달하는 과정이 여기서 처리된다.
 ```c++
-// TODO
+// virtual 함수이기 때문에 IocpObject 상속받은 클래스 내부에서 각자 구현
+// Listener(문지기 소켓)의 예를 살펴보자
+// Listener은 recv나 send를 애초에 처리하지 않으므로 곧장 acceptEvent로 typecast해 ProcessAccept()를 
+void Listener::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes)
+{
+	ASSERT_CRASH(iocpEvent->GetType() == EventType::Accept);
+	AcceptEvent* acceptEvent = static_cast<AcceptEvent*>(iocpEvent);
+	ProcessAccept(acceptEvent);
+}
 ```
 이 함수는 IocpCore::Dispatch(uint32 timeoutMs)로부터 호출된다.
 
@@ -187,10 +195,9 @@ CP에 등록해야 되는 소켓이므로 IocpObject를 상속받아 구현한�
 (소켓을 accept해줘야 하므로)  
 IocpObject의 인터페이스 함수들의 구현은 거의 동일하므로 넘어가고, 핵심 함수만 간략히 살펴보자.  
 
-* Listener::StartAccept(NetAddress netAddress)
-* Listener::RegisterAccept(AcceptEvent* acceptEvent)  
 * Listener::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes)  
 * Listener::ProcessAccept(AcceptEvent* acceptEvent)  
+* Listener::RegisterAccept(AcceptEvent* acceptEvent)  
   
 이 함수들을 하나의 흐름으로 살펴보자.  
 
@@ -203,19 +210,24 @@ IocpObject의 인터페이스 함수들의 구현은 거의 동일하므로 넘�
 
 주의해야 할 점은 ProcessAccept()는 함수 종료시 RegisterAccept()를 다시 호출해 지금까지의 일련의 사이클이 다시 재귀적으로 진행되도록 해줘야 한다는 것이다. (그래야 accept 올때마다 계속 받을 수 있기 때문이다. 그리고 재귀적으로 호출한다고 무한히 재귀를 타는 건 아니고, RegisterAccept의 AccpetEx()에서 accept할 소켓이 생겨야 계속 진행하는 듯 하다. 이부분은 확실치 않다.)  
 
-StartAccept
-![image](https://user-images.githubusercontent.com/63915665/215310943-4e82d94e-9229-4a8c-8b25-0f7b11e951a0.png)
-
-RegisterAccept  
-![image](https://user-images.githubusercontent.com/63915665/215310774-5bad2a65-52ec-4265-8324-0983b64fd036.png)
+Dispatch  
+![image](https://user-images.githubusercontent.com/63915665/215312019-176ba0ae-0236-4536-bec1-42473da1816f.png)  
 
 ProcessAccept  
 ![image](https://user-images.githubusercontent.com/63915665/214218201-5d18ea5e-1226-4a2c-ab26-21f09e76d1e6.png)  
 
----  
-
+RegisterAccept  
+![image](https://user-images.githubusercontent.com/63915665/215310774-5bad2a65-52ec-4265-8324-0983b64fd036.png)  
+  
 최종적으로 이렇게 라이브러리회된 Iocp의 핵심 기능들을 간이로 작동시키기위해 main함수에서 다음과 같이 테스트해줄 수 있다.  
 ![image](https://user-images.githubusercontent.com/63915665/214219115-30d9f17f-48a1-485a-9c9f-244878695d7c.png)  
+
+여기서 StartAccept는 최초 1회, Listener를 등록해주며 동시에 첫 RegisterAccept()를 호출해주는 과정이다.  
+![image](https://user-images.githubusercontent.com/63915665/215310943-4e82d94e-9229-4a8c-8b25-0f7b11e951a0.png)  
+지금은 임시로 for loop으로 RegisterAccept 호출을 해주고 있다. (숫자를 1 이상으로 지정하면 보다 더 많은 클라이언트들의 accept 시도를 더 빠르게 수락할 수 있다, 이는 RegisterAccept가 내부에서 AcceptEx를 사용하기 때문에 accept가 이뤄지기 전까지 대기하기 때문이다. 쉽게 비유하면 문지기가 많이 대기하고 있을 수록 한번에 많은 손님들이 몰려와도 빠르게 자리를 안내해줄 수 있는 것과 마찬가지이다.)  
+
+지금까지의 코드 흐름을 쭉 정리해보자.  
+
 
 현재까지 다룬 내용들에서 한 가지 보완할 점이 있다면 CP에 저장되어있는 IocpObject가 클라이언트 튕김 등의 예기치 못한 이유로 worker 스레드에서 일을 처리하던 도중에 삭제되지 않도록 하는 것인데, 이건 나중에 다뤄보자.  
 
