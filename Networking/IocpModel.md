@@ -187,11 +187,12 @@ CP에 등록해야 되는 소켓이므로 IocpObject를 상속받아 구현한�
 (소켓을 accept해줘야 하므로)  
 IocpObject의 인터페이스 함수들의 구현은 거의 동일하므로 넘어가고, 핵심 함수만 간략히 살펴보자.  
 
+* Listener::StartAccept(NetAddress netAddress)
 * Listener::RegisterAccept(AcceptEvent* acceptEvent)  
 * Listener::Dispatch(IocpEvent* iocpEvent, int32 numOfBytes)  
 * Listener::ProcessAccept(AcceptEvent* acceptEvent)  
   
-세 함수를 하나의 흐름으로 살펴보자.  
+이 함수들을 하나의 흐름으로 살펴보자.  
 
 클라를 나타내는 Session 객체를 여기서 생성해준다.  
 클라에 대한 정보는 AcceptEvent를 통해 받고, Session 생성 후 다시 AcceptEvent 내부에 저장해준다.  
@@ -202,7 +203,13 @@ IocpObject의 인터페이스 함수들의 구현은 거의 동일하므로 넘�
 
 주의해야 할 점은 ProcessAccept()는 함수 종료시 RegisterAccept()를 다시 호출해 지금까지의 일련의 사이클이 다시 재귀적으로 진행되도록 해줘야 한다는 것이다. (그래야 accept 올때마다 계속 받을 수 있기 때문이다. 그리고 재귀적으로 호출한다고 무한히 재귀를 타는 건 아니고, RegisterAccept의 AccpetEx()에서 accept할 소켓이 생겨야 계속 진행하는 듯 하다. 이부분은 확실치 않다.)  
 
-ProcessAccept 코드는 대략 다음과 같은 형태로 구현된다.    
+StartAccept
+![image](https://user-images.githubusercontent.com/63915665/215310943-4e82d94e-9229-4a8c-8b25-0f7b11e951a0.png)
+
+RegisterAccept  
+![image](https://user-images.githubusercontent.com/63915665/215310774-5bad2a65-52ec-4265-8324-0983b64fd036.png)
+
+ProcessAccept  
 ![image](https://user-images.githubusercontent.com/63915665/214218201-5d18ea5e-1226-4a2c-ab26-21f09e76d1e6.png)  
 
 ---  
