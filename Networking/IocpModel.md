@@ -309,7 +309,31 @@ bool IocpCore::Dispatch(uint32 timeoutMs)
 
 ---  
 
-## 2. Sevice 구현 (하나의 세션에 대해 해당 세션과 타 세션 간의 통신을 관리해주는 객체. 서버-클라, 클라-클라, 서버-서버)  
+## 2. Sevice 구현
+개선할 부분:  
+현재 임시방편으로 Listener을 main()에서 만들어서 사용하고 있는데, 나중에 서버 규모가 더 커지고, 또 서버-서버간 통신(ex.ai 서버, 로직서버 등)도 생기게 되면 지금과 같은 형태로는 사용하기가 상당히 불편해진다.  
+
+해결법:  
+발신자, 수신자의 상호작용을 편하게 해주는 Service라는 객체를 만든다.  
+Service는 서버 통신 가장 상위단에서의 로직을 관리하는 느낌의 핵심적인 객체로, 기존 main() 함수에 작성했던 로직들이 Service에서 처리된다.  
+(Geophyte에서의 Engine과 유사한 느낌의 역할이다)  
+  
+Service는 자신과 연결된 다른 세션(들)을 관리한다.  
+Service는 클라이언트, 서버 모두가 사용하며, Service를 상속받은 ClientService, ServerService를 사용한다.  
+Service는 Iocp를 이용해 자신과 연결된 세션들과의 IO를 처리한다. (이말인즉슨 클라이언트 또한 IOCP를 사용해 서버와의 IO를 처리한다는 것이다)  
+ServerService의 경우 내부에 Listener IocpObject를 갖고 관리한다. (ClientService에는 없다)  
+반대로 Listener 또한 ServerService에 대한 참조를 갖고 각종 정보들을 Service로부터 받아와 사용한다.  
+Service는 SessionFactory라는 함수 레퍼런스를 멤버 변수로 갖는데, Service.CreateSession()시 SessionFactory를 사용해 필요한 타입에 맞는 함수를 호출해 Session을 만든다.  
+(주석:  
+IOCP 강의 내용 중 조금 마음에 들지 않는 부분은 CreateSession()이 Session을 만들고 IOCP에 추가해주는 것까지 한번에 해준다는 것인데, 이 과정을 두 함수로 쪼개야 하지 않나 라는 생각이 든다. 또 StartAccept()내에서 호출한 CreateSession() 이후 만약 함수 내에 뭔가 에러가 발생한다면 CreateSession()에서 IOCP에 추가된 Session은 계속 IOCP에 남아있는게 아닌가, 그러면 성능 상의 저하를 불러일으키는 게 아닌가, 하는 생각이 든다. 나중에 실제로 내 서버를 구현할 때 테스트해보자.)  
+
+Service 구현 및 기존 구조에 Integrate하는 과정과 관련된 코드들은 크게 어렵지 않으므로 생략한다. (IOCP Server Service 중반부부터 참고)  
+
+Service 사용 모습은 다음과 같은 형태이다.  
+기존과 로직 자체는 동일하다.  
+![image](https://user-images.githubusercontent.com/63915665/215775049-55e4f1ca-dbe0-4baf-bac1-ebef3c342558.png)  
+(주석: GameSession의 경우 아직은 클라측에 딱히 뭘 구현한게 없기 때문에 그냥 Session 상속만 한채 그대로 사용중이다.)  
+
 
 
 
