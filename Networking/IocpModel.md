@@ -336,7 +336,20 @@ Service 사용 모습은 다음과 같은 형태이다.
 (주석: GameSession의 경우 아직은 클라측에 딱히 뭘 구현한게 없기 때문에 그냥 Session 상속만 한채 그대로 사용중이다.)  
 
 
-## 3. Session 구현
+## 3. Session 구현  
+Session은 서버측에서 연결된 클라이언트의 정보를 관리하기 위해 만든 객체로, 하나의 세션은 하나의 클라이언트와의 연결을 나타낸다.  
+  
+Session은 같은 IocpObject를 상속한 Listener과 굉장히 흐름이 흡사하다.  
+때문에 반드시 위 내용들을 숙지하고 오는 것을 권장한다.  
+  
+디테일을 살펴보기에 앞서 간단히 요약해보겠다.  
+둘다 ProcessXXX() 호출 후 RegisterXXX() 호출, 여기서 비동기 winsock 함수 호출한 후 그 함수가 실행완료되어 IOCP로 통보될 경우 대기중이던 worker thread에서 Dispatch 실행 -> Session.Dispatch() 실행, 잔업을 처리한다. (예시의 경우에는 dispatch로 recv 완료 통보를 받을 경우 수신한 패킷의 크기를 콘솔에 출력함)  
+잔업 처리 이후 Listener과 마찬가지로 RegisterXXX() 호출을 통해 무한 루프를 돌게 한다. 이후 반복.  
+  
+위 과정 처리중에 (Listener가 AcceptEvent로 그러했듯이) 정보전달에는 XXXEvent들이 사용된다. 세션의 경우 Listener보다 가능한 행동의 타입들이 다양하다 보니(Recv,Send,Connect) .Dispatch() 에서 이벤트타입에 따라 어떤 액션을 취할지 나눠주는 로직이 처리된다.  
+
+
+
 
 
 
