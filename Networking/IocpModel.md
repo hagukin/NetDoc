@@ -348,9 +348,22 @@ Session은 같은 IocpObject를 상속한 Listener과 굉장히 흐름이 흡사
   
 위 과정 처리중에 (Listener가 AcceptEvent로 그러했듯이) 정보전달에는 XXXEvent들이 사용된다. 세션의 경우 Listener보다 가능한 행동의 타입들이 다양하다 보니(Recv,Send,Connect) .Dispatch() 에서 이벤트타입에 따라 어떤 액션을 취할지 나눠주는 로직이 처리된다.  
 
+여기서 주의해야 할 것은, Dispatch()를 돌리다가 요청이 오면 처리가 가능한 Recv와 다르게 Send의 경우 보낼 데이터가 있을 때 필요한 시점에 직접 호출해주는 형태이기 때문에 처리 구조가 기존 Recv, Accept와 약간 달라지게 된다는 점이다.  
+
+우선 Recv부터 살펴보자. Session 1 참고  
+TODO : Recv 작성  
+
+이번엔 Send를 살펴보자. Session 2 참고  
+TODO : Send 작성  
 
 
+## 4. Connect, Disconnect 구현  
+Connect() -> RegisterConnect() -> ConnectEx()로 별다른 특별한 로직 없이 바로 이어진다.  
+TODO : Connect 작성  
 
+---  
+  
+현재 Disconnect는 SocketUtils::Close를 이용해 소켓을 닫아버리고 있다. 이걸 DisconnectEx()를 이용해 비동기 IOCP 소켓 함수로 닫아주도록 교환해주자.  
 
-
-
+이 방식을 사용하게 되면 소켓을 재사용할 수 있다는 장점이 있다.  
+  
