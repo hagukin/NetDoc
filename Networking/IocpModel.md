@@ -68,6 +68,12 @@ void WorkerThreadMain(HANDLE iocpHandle)
     
     // CP에서 일감이 완료되면 이 함수가 처리되어 진행된다.
     BOOL ret = ::GetQueuedCompletionStatus(iocpHandle, &bytesTransferred, (ULONG_PTR)&session, (LPOVERLAPPED*)&overlappedEx, INFINITE); 
+    /*
+    아주 중요한 사실 중 하나가, 여러 스레드들에서 가동중인 GetQueuedCompletionStatus 중 단 하나에만 알림이 전달된다는 점이다.
+    때문에 서로 다른 두 스레드가 같은 알림을 받아 같은 work을 처리하는 일은 다행히도 벌어지지 않는다.
+    */
+    
+    
     // 앞에서 CreateIoCompletionPort에서 session의 주소값을 ULONG_PTR 으로 넘겼었는데, 이 주소값을 이용해 session을 이 스레드에서 복원시켜준다.  
     // ULONG_PTR은 포인터 연산을 하기 위해 사용되는 자료형으로, 메모리 주소를 정확하게 specify하기 위해 포인터 객체를 ULONG_PTR로 typecast하는 것 같다
     // 참고: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-dtyp/21eec394-630d-49ed-8b4a-ab74a1614611
@@ -152,8 +158,10 @@ bool IocpCore::Register(IocpObject* iocpObject)
 ```
 
 ### IocpCore::Dispatch()
-위쪽의 라이브러리화 이전의 약식 코드를 먼저 보고오면 이해가 더 빠르다.  
-IocpCore::Dispatch()는 전부 메인 스레드가 아닌 개별 worker 스레드에서 처리된다는 걸 명심하자.  
+worker 스레드에서 (거의) 상시 동작하는 함수로, CP로부터의 알림을 기다리는 함수이다.  
+알림이 오면 어떤 객체(IocpObject)에서 알림이 왔는지를 추출해 해당 객체에 맞는 처리를 해주기 위해 IocpObject.Dispatch()를 실행한다.  
+
+IocpCore::Dispatch()는 항상 메인 스레드가 아닌 개별 worker 스레드에서 처리된다는 걸 명심하자.  
 (즉 Dispatch로 인해 발생하는 모든 IO 처리들 (recv,accept 등)도 마찬가지로 해당 worker 스레드에서 동작한다)  
 
 ```c++
@@ -321,6 +329,7 @@ bool IocpCore::Dispatch(uint32 timeoutMs)
 해결법:  
 발신자, 수신자의 상호작용을 편하게 해주는 Service라는 객체를 만든다.  
 Service는 서버 통신 가장 상위단에서의 로직을 관리하는 느낌의 핵심적인 객체로, 기존 main() 함수에 작성했던 로직들이 Service에서 처리된다.  
+Service 내에 Session, IocpCore 등을 멤버로 저장한다. (서버(ServerService)의 경우, 내부에 Listener도 멤버로 가진다. ServerService.Start()하면 알아서 내부적으로 Listener만들고 Accept해주는 것이다)  
 (Geophyte에서의 Engine과 유사한 느낌의 역할이다)  
   
 Service는 자신과 연결된 다른 세션(들)을 관리한다.  
@@ -341,9 +350,14 @@ Service 사용 모습은 다음과 같은 형태이다.
 
 
 ## 3. Session 구현  
-Session은 서버측에서 연결된 클라이언트의 정보를 관리하기 위해 만든 객체로, 하나의 세션은 하나의 클라이언트와의 연결을 나타낸다.  
+Session은 A 입장에서 연결된 상대방의 정보들을 관리하기 위해 만든 객체로, 하나의 세션은 하나의 다른 B와의 연결을 나타낸다.  
+A,B라는 표현으로 알 수 있듯이 Session은 서버, 클라이언트 양쪽 모두가 사용한다. (각각 ServerSession, GameSession으로 상속받아 사용)  
+
+Session이 해주는 일은 Recv, Send, Connect, Disconnect 로직의 처리 및 해당 액션들의 처리 이후 해줄 일들에 대한 처리라고 생각하면 된다.  
+(OnRecv, OnSend, OnConnect, OnDisconnect. 이 함수들은 RegisterXXX() 내부에서 비동기IO의 처리 이후 넘어온 ProcessXXX()함수 내에서 실행되며, 실제로 IO한 결과를 어떻게 활용할지 여기에다 작성해주면 된다. Recv 시 몇바이트 받았다고 로그 띄우던 것도 OnRecv()내부에서의 구현이다.)  
   
 Session은 같은 IocpObject를 상속한 Listener과 굉장히 흐름이 흡사하다.  
+실제로 둘 다 ServerService의 멤버변수로 저장된다. (Session이 recv, send, connect, disconnect를 맡고, listener가 accept를 맡는다. 클라이언트의 GameService의 경우 Accept할 일이 없으므로 listener은 없다.)  
 때문에 반드시 위 내용들을 숙지하고 오는 것을 권장한다.  
   
 디테일을 살펴보기에 앞서 간단히 요약해보겠다.  
@@ -360,14 +374,26 @@ TODO : Recv 작성
 이번엔 Send를 살펴보자. Session 2 참고  
 TODO : Send 작성  
 
+이번엔 Connect, Disconnect를 살펴보자. Session 3 참고  
+Connect의 경우,  
+Session::Connect() -> RegisterConnect() -> ConnectEx(), CP에서 알림 전송 -> 기다리던 worker thread의 GetQueuedCompletionStatus에서 수신해 ProcessConnect() 호출 -> RegisterRecv() 순으로 처리된다.  
+![image](https://user-images.githubusercontent.com/63915665/221198617-896133c5-28aa-4bf9-b8e4-28d704702300.png)  
+마지막에 Register**Recv**하는 부분에 유의하자.  
+Connect는 필요 시 호출되는 느낌이기 때문에 ProcessDisconnect()가 끝나도 RegisterConnect()를 호출해주지 않는다.  
+그러나 Connect 한번 했으면 그 뒤부터는 받을 패킷들에 대비해야 하기 때문에 RegisterConnect가 아닌 RegisterRecv를 실행해 루프가 이어지도록 한다.  
 
-## 4. Connect, Disconnect 구현  
-Connect() -> RegisterConnect() -> ConnectEx()로 별다른 특별한 로직 없이 바로 이어진다.  
-TODO : Connect 작성  
+이번에는 Disconnect를 살펴보자. Disconnect는 현재 SocketUtils::Close를 이용해 소켓을 닫아버리고 있다. 이걸 Connect와 유사하게 Disconnect() -> RegisterDisconnect() -> DisconnectEx() -> 타 스레드에서 Dispatch 후 ProcessDisconnect() -> **종료** 순으로 호출되고, DisconnectEx의 파라미터 중 TF_REUSE_SOCKET을 이용해 소켓을 재사용할 수 있게 만들어준다. (실제 재사용 로직은 나중에 추가하고, 일단 재사용 가능함을 winsock 단에서 표기하는 것이라고 생각하자.)  
+Connect와 다르게 RegisterRecv를 실행하지 않는데, 당연하게도 이는 상대방과의 연결이 끊겼으므로 더 이상 해당 worker 스레드는 더이상 해당 IocpObject에 관해 뭘 더 해줄 필요가 없기 때문에 다시 IocpCore::Dispatch()를 실행하러 가는 것이다.  
+참고:  
+![image](https://user-images.githubusercontent.com/63915665/221200416-658fc39e-542f-44f5-af4a-482af3d85114.png)  
 
----  
-  
-현재 Disconnect는 SocketUtils::Close를 이용해 소켓을 닫아버리고 있다. 이걸 DisconnectEx()를 이용해 비동기 IOCP 소켓 함수로 닫아주도록 교환해주자.  
 
-이 방식을 사용하게 되면 소켓을 재사용할 수 있다는 장점이 있다.  
+
+
+
+
+
+
+
+
   
