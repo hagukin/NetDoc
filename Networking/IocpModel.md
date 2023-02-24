@@ -5,6 +5,10 @@ Overlapped 모델을 요약하면 다음과 같다.
 함수 실행이 완료되면 쓰레드 별로 있는 APC 큐에 해당 함수가 완료되면 실행될 콜백 함수의 정보와 함께 Alert를 해주라는 요청이 쌓인다.  
 이후 APC큐를 비우면서 콜백을 실행하고 그 후 스레드를 Alert해주어 Alertable wait 상태에서 빠져나가게 한다.  
 
+우리가 만들 것은 멀티스레드 IOCP 모델인데, 멀티스레드 IOCP 모델을 한 마디로 요약하면  
+Completion Port로부터 비동기 I/O 처리가 완료되었음을 알림받는 함수인 GetQueuedCompletionStatus() 함수를 여러 worker thread들에서 돌리면서 I/O 함수 완료에 대한 후속 처리를 여러 스레드가 분할해서 처리하는 소켓 입출력 구조를 의미한다.  
+아직 다루지 않은 개념들이 등장하므로, 글을 더 읽고 나중에 돌아와 다시 확인해보자.  
+
 IOCP 모델은 Overlapped 모델과 거의 유사하지만 몇 가지 큰 차이점이 있다.  
 1) 스레드마다 APC 큐가 있던 Overlapped 구조와 다르게, 중앙에서 제어하는 Completion Port 큐 하나를 사용한다. (즉 더 멀티스레드 친화적이다)  
 2) 콜백이 올 때 까지 Alertable Wait 상태를 유지하던 기존 방식과 다르게 Completion Port 큐의 처리 결과를 GetQueuedCompletionStatus() 함수를 통해 처리한다. (즉 Alertable wait로 인한 부하가 줄어든다)   
