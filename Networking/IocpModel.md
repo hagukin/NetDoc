@@ -322,13 +322,9 @@ bool IocpCore::Dispatch(uint32 timeoutMs)
 
 ---  
 
-## 2. Sevice 구현
-개선할 부분:  
-현재 임시방편으로 Listener을 main()에서 만들어서 사용하고 있는데, 나중에 서버 규모가 더 커지고, 또 서버-서버간 통신(ex.ai 서버, 로직서버 등)도 생기게 되면 지금과 같은 형태로는 사용하기가 상당히 불편해진다.  
-
-해결법:  
-발신자, 수신자의 상호작용을 편하게 해주는 Service라는 객체를 만든다.  
+## 2. Sevice 구현 
 Service는 서버 통신 가장 상위단에서의 로직을 관리하는 느낌의 핵심적인 객체로, 기존 main() 함수에 작성했던 로직들이 Service에서 처리된다.  
+
 Service 내에 Session, IocpCore 등을 멤버로 저장한다. (서버(ServerService)의 경우, 내부에 Listener도 멤버로 가진다. ServerService.Start()하면 알아서 내부적으로 Listener만들고 Accept해주는 것이다)  
 (Geophyte에서의 Engine과 유사한 느낌의 역할이다)  
   
@@ -386,6 +382,38 @@ Connect는 필요 시 호출되는 느낌이기 때문에 ProcessDisconnect()가
 Connect와 다르게 RegisterRecv를 실행하지 않는데, 당연하게도 이는 상대방과의 연결이 끊겼으므로 더 이상 해당 worker 스레드는 더이상 해당 IocpObject에 관해 뭘 더 해줄 필요가 없기 때문에 다시 IocpCore::Dispatch()를 실행하러 가는 것이다.  
 참고:  
 ![image](https://user-images.githubusercontent.com/63915665/221200416-658fc39e-542f-44f5-af4a-482af3d85114.png)  
+
+
+## 4. RecvBuffer 구현  
+사실 recvBuffer이 이미 있긴 한데, 이건 우리가 그냥 데이터 전송이 잘 되나 확인하기 위해 임시로 만들어둔 BYTE(=char) recvBuffer[1000]; 즉 char array에 불과하고, 이를 제대로 객체화시켜서 버퍼 정책같은 걸 적용하기 쉽게 만들어보자.  
+
+한 가지 짚고 넘어갈 점은 RecvBuffer와 SendBuffer은 별도의 개별적인 객체로 구현할 것인데, 이는 둘의 버퍼 정책이 다르기 때문이다.  
+
+우선 Recv의 경우, 하나의 Service(클라 혹은 서버)에 대해 항상 하나의 Recv()만이 작동중이라는 것을 알 수 있다.  
+A라는 Service로 누군가 패킷을 보내면 대기중이던 RegisterRecv() 내의 WSARecv()에서 처리하고, 이걸 worker 스레드 **1개**가 알림을 받아 ProcessRecv() -> OnRecv()를 처리하고, 이게 다 끝나면 해당 worker 스레드가 RegisterRecv()를 다시 대기시킴으로써 처리된다.  
+결국 Recv 로직을 처리하는 모든 과정에서 WSARecv()는 딱 하나의 스레드에서만 동작할 수 있다는 것이다. 덕분에 recvBuffer은 멀티스레드 관련 문제로부터 매우 자유롭다.  
+
+이 사실을 인지한 상태로 코드를 살펴보자.  
+
+전:  
+![image](https://user-images.githubusercontent.com/63915665/221202595-4b4b44b9-53f6-4f36-b3c3-6a0bdcefd5bb.png)  
+![image](https://user-images.githubusercontent.com/63915665/221202689-82f13bb6-cd3a-4eb3-9232-c7393bb544cc.png)  
+
+현 방식의 문제점은 뭘까?  
+우리는 현재 Register을 할 때마다 \_recvBuffer을 .buf로 사용하고, 또 최대 크기도 1000만큼 갖는 WSABUF를 만들어서 거기에 Recv를 하고 있다. (즉 실질적으로 저장되는 공간은 char array인 \_recvBuffer이다)  
+
+그런데 우리가 사용중인 TCP의 특성 상 x바이트를 보냈을 때 한번에 x바이트만큼 다 온다는 보장이 없다.  
+x 바이트중 일부만 왔을 수도 있는데, 우리의 코드에서는 이걸 무시하고 그냥 RegisterRecv()가 한번 걸리면 그대로 쭉 처리해버린 후 OnRecv()에서 바로 \_recvBuffer 내용을 출력해주고 있다. 즉 한 번에 모든 정보가 왔음을 상정한 채 진행해버리고 있는 것이다.  
+
+그동안이야 데이터 크기가 작았으니 별 문제 없었지만, 크기가 커지면 당연히 정보가 분할될 가능성이 높아진다. 때문에 이에 대한 수정이 필요하다.  
+
+이 문제에 대한 올바른 해결법은 패킷 앞부분 헤더에 전송되는 패킷의 크기를 기입하는 것으로 처리하는 것인데, 일단 지금은 보다 더 원시적인 방법(기존에 온 정보가 만약 전체 데이터의 일부분이라면 나중에 또 데이터가 왔을 때 기존 패킷 뒤쪽에 붙여주는 방식)으로 먼저 구현해두고 나중에 수정해보자.  
+  
+  
+후:  
+
+
+
 
 
 
