@@ -425,6 +425,14 @@ r~w까지의 데이터만이 사용 가능성이 있는 데이터이기에 사�
 우선 2번 방식으로 구현해보자. (나중에 Circular buffer 구현도 해보자)  
 
 후:  
+세부적인 구현 코드는 생략한다. 크게 이해하기에 어렵지 않다.  
+![image](https://user-images.githubusercontent.com/63915665/221352589-fae0e9cc-e9d1-4d83-abdd-1d3898f4ab9c.png)  
+핵심적인 역할을 하는 함수가 Clean()인데, 주기적으로 버퍼 데이터를 앞으로 끌고와주는 역할로, 안쓰는 데이터들을 지우는 게 아니라 그냥 커서를 사용해 데이터를 덮어써버리는 것을 알 수 있다.  
+![image](https://user-images.githubusercontent.com/63915665/221353044-38a53cfc-497b-437b-b279-786d66d18f23.png)  
+이렇게 데이터를 앞으로 복사해오는 횟수를 최대한 줄여 성능을 개선시키기 위해 사용하는 방법이 바로 BUFFER_SIZE와 BUFFER_COUNT의 사용인데, 세부적인 내용은 IOCP RecvBuffer 참고.  
+
+아래 코드를 비롯해 Session에서 약간의 수정들을 거치면 사용이 가능하다.  
+![image](https://user-images.githubusercontent.com/63915665/221352865-25de0e1b-dcee-4e20-ad1b-f91905df570d.png)  
 
 
 
