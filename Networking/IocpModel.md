@@ -243,7 +243,7 @@ RegisterAccept
 그 전에 RegisterAccept()는 블로킹 함수이고, accept에 성공할 때까지 대기함을 명심하자. 성공 후에는 그냥 바로 종료되는데, 예기치 못한 에러(WSA_IO_PENDING이 아닌 나머지 모든 에러)가 발생했을 경우에만 재귀한다. 이는 원래대로라면 accept 성공한 걸 감지한 다른 worker 스레드에서 RegisterAccept()를 실행해 항상 Accept 가능한 상태를 유지해야 하는데, 에러가 나면 성공을 감지를 못해 상태가 끊기기 때문이다.  
 
 1. Listener 등록    
-Listener 생성 -> StartAccept() -> Listener CP에 등록, StartAccept()에서 RegisterAccept() 호출 -> RegisterAccept()에서 클라이언트 accept 할때까지 블락 -> 성공 시 CP에 알림 보내면서 종료  
+Listener 생성 -> StartAccept() -> Listener CP에 등록, StartAccept()에서 RegisterAccept() 호출 -> RegisterAccept()에서 클라이언트 accept 할때까지 블락(정정: 정확히 말하면 블락이 아니다. WSA 함수들은 호출 즉시 완료 여부와 관계없이 바로 반환하기 때문에 논블로킹 함수이다. 그러나 처리가 완료가 되어야 CP에 알림을 보낸다는 점에서 처리가 될 때까지 블락한다는 느낌으로 로직을 이해하는 편이 더 직관적이긴 하다.) -> accept 성공 시 CP에 알림 보내면서 종료  
   
 2. 클라이언트들 accept  
 worker 스레드들 생성 -> 각 스레드별로 IocpCore::Dispatch() -> CP에서 accept 성공 알림받고 IocpObject::Dispatch() 실행 (정확히는 virtual이므로 Listener::Dispatch()) -> Listener::Dispatch() 실행되는 시점에서 Listener과 관련된 IO 이벤트(accept) 처리가 완료되었음을 의미 (즉 타 스레드의 Listener에서 신규 클라이언트에 대한 AcceptEx가 성공했음, 우리의 상황에서 메인 스레드의 RegisterAccept()가 첫번째 클라를 accept 성공한 경우이다) -> worker 스레드에서 Listener::ProcessAccept()를 호출해 Client Connected! 띄우고 RegisterAccept() 실행 -> 마찬가지로 두번째 클라 accept 성공할 때까지 블락 -> 성공 시 CP에 알림 보내면서 종료 -> 종료 후 메인스레드의 while loop에 의해 다시 IocpCore::Dispatch()가 실행되며 다음번 IO 신호를 기다리며 대기  
