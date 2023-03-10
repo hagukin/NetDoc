@@ -26,6 +26,7 @@ IOCP 39 참고
 앞으로 IOCP 모델에서 사용될 WSASend, WSARecv등의 함수들은 일반적인 블로킹함수인 Send, Recv와는 다른데, 
 WSA함수들은 논블로킹 소켓에서 작동하며 실행 즉시 완료 여부와 관계없이 결과를 반환한다.  
 [참고글](https://z-man.tistory.com/272)  
+[참고글2](https://1d1cblog.tistory.com/385)  
   
 ### TCP의 성질과 관련된 recv()의 특성  
 클라가 크기 100짜리 데이터를 TCP로 서버에게 보낸다고 가정하자.  
