@@ -15,3 +15,4 @@ CAS가 true를 반환해서 top이던 A를 B로 변경하게 된다. 그러나 B
 
 ## 어떻게 해결하는가
 위키피디아 및 IOCP 33 - Memory pool #2 참고  
+https://3dmpengines.tistory.com/2237 참고
