@@ -180,9 +180,7 @@ bool IocpCore::Dispatch(uint32 timeoutMs)
     timeoutMs) == true)
   {
     // 여기 진입했다는 건 CP가 뭔가 소켓io작업이 끝났음을 감지했다는 의미
-    // 고로 worker thread에게 이후 작업을 맡겨야 한다
-    iocpObject->Dispatch(iocpEvent, numOfBytes); // 실질적으로 타입에 맡게 스레드에게 작업을 맡기는 과정이 여기서 처리된다
-    // 즉 iocpCore의 Dispatch()가 iocpObject의 Dispatch()를 호출
+    iocpObject->Dispatch(iocpEvent, numOfBytes); // iocpObject의 종류(Listener, Session)에 따라 Dispatch()의 구현 내용도 달라지므로 이 이후부터는 종류에 따라 다를 것이다
   }
   else
   {
